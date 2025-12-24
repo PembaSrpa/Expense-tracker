@@ -4,63 +4,65 @@ from backend.models import TransactionType
 from datetime import date, timedelta
 import random
 
-db = SessionLocal()
+def seed_samples(db=None):
+    local_session = False
+    if db is None:
+        db = SessionLocal()
+        local_session = True
 
-# Get all categories
-categories = get_categories(db, type='expense')
-category_ids = [c.id for c in categories]
-category_dict = {c.name: c.id for c in categories}
+    # 1. Get categories (must run after categories are seeded)
+    exp_categories = get_categories(db, type='expense')
+    inc_categories = get_categories(db, type='income')
 
-# Get income categories
-income_categories = get_categories(db, type='income')
-income_category_ids = [c.id for c in income_categories]
+    if not exp_categories or not inc_categories:
+        print("❌ No categories found. Please seed categories first!")
+        return
 
-print("Adding sample transactions...")
-for i in range(100):
-    days_ago = random.randint(0, 180)
-    transaction_date = date.today() - timedelta(days=days_ago)
+    category_ids = [c.id for c in exp_categories]
+    income_category_ids = [c.id for c in inc_categories]
 
-    # Random category
-    category_id = random.choice(category_ids)
-    amount = random.uniform(15, 150)
+    # 2. Add sample transactions
+    print("Adding 100 sample transactions...")
+    for i in range(100):
+        days_ago = random.randint(0, 180)
+        transaction_date = date.today() - timedelta(days=days_ago)
+        category_id = random.choice(category_ids)
+        amount = random.uniform(15, 150)
 
-    create_transaction(
-        db=db,
-        date=transaction_date,
-        amount=round(amount, 2),
-        category_id=category_id,
-        description=f"Sample expense",
-        transaction_type=TransactionType.expense
-    )
+        create_transaction(
+            db=db,
+            date=transaction_date,
+            amount=round(amount, 2),
+            category_id=category_id,
+            description="Sample expense",
+            transaction_type=TransactionType.expense
+        )
 
-print("✅ Added 100 sample transactions")
+    # 3. Add income
+    print("Adding income transactions...")
+    for i in range(6):
+        income_date = date.today() - timedelta(days=i*30)
+        create_transaction(
+            db=db,
+            date=income_date,
+            amount=3000.0,
+            category_id=income_category_ids[0],
+            description='Monthly salary',
+            transaction_type=TransactionType.income
+        )
 
-# Add income
-print("Adding income transactions...")
-for i in range(6):
-    income_date = date.today() - timedelta(days=i*30)
-    create_transaction(
-        db=db,
-        date=income_date,
-        amount=3000.0,
-        category_id=income_category_ids[0],
-        description='Monthly salary',
-        transaction_type=TransactionType.income
-    )
+    # 4. Add budgets
+    print("Adding budgets...")
+    for cat in exp_categories[:6]:
+        create_budget(
+            db=db,
+            category_id=cat.id,
+            monthly_limit=round(random.uniform(200, 500), 2),
+            start_date=date.today() - timedelta(days=180)
+        )
 
-print("✅ Added 6 income transactions")
+    db.commit()
+    print("✅ Sample data added successfully!")
 
-# Add budgets
-print("Adding budgets...")
-for cat in categories[:6]:  # First 6 expense categories
-    create_budget(
-        db=db,
-        category_id=cat.id,  # CHANGED
-        monthly_limit=random.uniform(200, 500),
-        start_date=date.today() - timedelta(days=180)
-    )
-
-print("✅ Added budgets")
-print("\n🎉 Sample data added successfully!")
-
-db.close()
+    if local_session:
+        db.close()

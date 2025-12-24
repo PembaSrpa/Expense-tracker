@@ -12,12 +12,6 @@ from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from backend import exports
 from fastapi.responses import StreamingResponse
-#quick and dirty
-import add_default_categories
-import add_sample_data
-# --- QUICK AND DIRTY SEEDING LOGIC ---
-from backend.database import engine, SessionLocal
-from backend import models
 
 # Pydantic models for request/response validation
 
@@ -362,24 +356,22 @@ def export_summary(
     )
 
 
+# --- QUICK AND DIRTY SEEDING LOGIC ---
+from backend import models
+from backend.database import engine, SessionLocal
+import add_default_categories
+import add_sample_data
 
-# 1. Create the tables immediately
+# Create Tables
 models.Base.metadata.create_all(bind=engine)
 
-# 2. Run your scripts
-print("Running one-time data seed...")
+# Seed Data
 try:
-    db = SessionLocal()
-    # Check if your scripts have a seed_func, otherwise just import them
-    if hasattr(add_default_categories, 'seed_func'):
-        add_default_categories.seed_func(db)
-
-    if hasattr(add_sample_data, 'seed_func'):
-        add_sample_data.seed_func(db)
-
-    db.commit()
-    db.close()
-    print("Seeding complete!")
+    session = SessionLocal()
+    add_default_categories.seed_categories(session)
+    add_sample_data.seed_samples(session)
+    session.close()
+    print("🚀 Database initialized and seeded!")
 except Exception as e:
-    print(f"Seeding skipped or failed: {e}")
+    print(f"⚠️ Seeding issue: {e}")
 # -------------------------------------

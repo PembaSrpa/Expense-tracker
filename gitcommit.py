@@ -24,5 +24,5 @@ def git_push(message):
         print(f"An unexpected error occurred: {e}")
 
 # Usage
-message = "railway is a headache 2"
+message = "railway is a headache 3"
 git_push(message)
