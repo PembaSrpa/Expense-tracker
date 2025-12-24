@@ -6,6 +6,12 @@ from backend.models import TransactionType
 from pydantic import BaseModel
 from datetime import date
 from typing import Optional, List
+from backend import analytics
+from backend import visualizations
+from fastapi.responses import Response
+from fastapi.middleware.cors import CORSMiddleware
+from backend import exports
+from fastapi.responses import StreamingResponse
 
 # Pydantic models for request/response validation
 
@@ -58,6 +64,18 @@ app = FastAPI(
     title="Expense Tracker API",
     description="API for tracking expenses and managing budgets",
     version="1.0.0"
+)
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins (for development)
+#     allow_origins=[
+#     "http://localhost:3000",  # Your frontend
+#     "https://yourdomain.com", # (for production)
+# ]
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allows all headers
 )
 
 # Root endpoint
@@ -203,3 +221,132 @@ def create_category(category: CategoryCreate, db: Session = Depends(get_db)):
 def get_categories(type: Optional[str] = None, db: Session = Depends(get_db)):
     """Get all categories, optionally filtered by type"""
     return crud.get_categories(db, type=type)
+
+# ============= ADVANCED ANALYTICS ENDPOINTS =============
+
+@app.get("/analytics/monthly-trend")
+def get_monthly_trend(months: int = 6, db: Session = Depends(get_db)):
+    """Get monthly spending trend"""
+    return analytics.get_monthly_spending_trend(db, months)
+
+@app.get("/analytics/category-trend/{category}")
+def get_category_trend_endpoint(category: str, months: int = 6, db: Session = Depends(get_db)):
+    """Get spending trend for a specific category"""
+    return analytics.get_category_trend(db, category, months)
+
+@app.get("/analytics/spending-patterns")
+def get_patterns(db: Session = Depends(get_db)):
+    """Get spending patterns analysis"""
+    return analytics.get_spending_patterns(db)
+
+@app.get("/analytics/top-categories")
+def get_top_categories(limit: int = 5, db: Session = Depends(get_db)):
+    """Get top spending categories"""
+    return analytics.get_top_spending_categories(db, limit)
+
+@app.get("/analytics/unusual-spending")
+def get_unusual(db: Session = Depends(get_db)):
+    """Detect unusual transactions"""
+    return analytics.get_unusual_spending(db)
+
+@app.get("/analytics/savings-opportunities")
+def get_savings(db: Session = Depends(get_db)):
+    """Get savings recommendations"""
+    return analytics.identify_savings_opportunities(db)
+
+@app.get("/analytics/predict-spending")
+def predict_spending(category: Optional[str] = None, db: Session = Depends(get_db)):
+    """Predict next month's spending"""
+    return analytics.predict_monthly_spending(db, category)
+
+@app.get("/analytics/budget-alerts")
+def get_alerts(db: Session = Depends(get_db)):
+    """Get budget alerts"""
+    return analytics.get_budget_alerts(db)
+
+# ============= VISUALIZATION ENDPOINTS =============
+
+@app.get("/visualizations/monthly-trend")
+def get_monthly_trend_chart(months: int = 6, db: Session = Depends(get_db)):
+    """Get monthly spending trend chart as base64 image"""
+    img_base64 = visualizations.create_monthly_trend_chart(db, months)
+    return {"image": img_base64, "format": "base64"}
+
+@app.get("/visualizations/category-pie")
+def get_category_pie_chart(limit: int = 5, db: Session = Depends(get_db)):
+    """Get top categories pie chart as base64 image"""
+    img_base64 = visualizations.create_category_pie_chart(db, limit)
+    return {"image": img_base64, "format": "base64"}
+
+@app.get("/visualizations/budget-comparison")
+def get_budget_comparison_chart(db: Session = Depends(get_db)):
+    """Get budget vs actual comparison chart as base64 image"""
+    img_base64 = visualizations.create_budget_comparison_chart(db)
+    return {"image": img_base64, "format": "base64"}
+
+@app.get("/visualizations/spending-patterns")
+def get_spending_patterns_chart(db: Session = Depends(get_db)):
+    """Get spending patterns by day of week chart as base64 image"""
+    img_base64 = visualizations.create_spending_patterns_chart(db)
+    return {"image": img_base64, "format": "base64"}
+
+@app.get("/visualizations/income-expense")
+def get_income_expense_chart(months: int = 6, db: Session = Depends(get_db)):
+    """Get income vs expense comparison chart as base64 image"""
+    img_base64 = visualizations.create_income_expense_chart(db, months)
+    return {"image": img_base64, "format": "base64"}
+
+@app.get("/visualizations/category-trend/{category}")
+def get_category_trend_chart(category: str, months: int = 6, db: Session = Depends(get_db)):
+    """Get spending trend for specific category as base64 image"""
+    img_base64 = visualizations.create_category_trend_chart(db, category, months)
+    return {"image": img_base64, "format": "base64"}
+
+# ============= EXPORT ENDPOINTS =============
+
+@app.get("/export/transactions")
+def export_transactions(
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    db: Session = Depends(get_db)
+):
+    """Export transactions to CSV"""
+    csv_data = exports.export_transactions_csv(db, start_date, end_date)
+
+    return StreamingResponse(
+        iter([csv_data]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=transactions_{date.today()}.csv"
+        }
+    )
+
+@app.get("/export/budgets")
+def export_budgets(db: Session = Depends(get_db)):
+    """Export budgets to CSV"""
+    csv_data = exports.export_budgets_csv(db)
+
+    return StreamingResponse(
+        iter([csv_data]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=budgets_{date.today()}.csv"
+        }
+    )
+
+@app.get("/export/summary")
+def export_summary(
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    db: Session = Depends(get_db)
+):
+    """Export spending summary to CSV"""
+    csv_data = exports.export_summary_csv(db, start_date, end_date)
+
+    return StreamingResponse(
+        iter([csv_data]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=summary_{date.today()}.csv"
+        }
+    )
