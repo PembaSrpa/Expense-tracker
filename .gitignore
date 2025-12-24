@@ -1,0 +1,35 @@
+# --- Python Environment ---
+.venv/
+venv/
+env/
+bin/
+lib/
+# Exclude the actual packages, but keep requirements.txt
+# (Which your script now generates automatically)
+
+# --- Python Cache & Bytecode ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# --- Data & Analysis ---
+# Exclude datasets and Matplotlib/Pandas temp files
+.ipynb_checkpoints/
+*.csv
+*.xlsx
+*.sqlite3
+
+# --- Web & FastAPI ---
+# Environment variables (Crucial for FastAPI security)
+.env
+.env.*
+# Logs
+*.log
+
+# --- OS & IDE ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
