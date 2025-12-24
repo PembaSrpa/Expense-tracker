@@ -356,22 +356,22 @@ def export_summary(
     )
 
 
-# --- QUICK AND DIRTY SEEDING LOGIC ---
-from backend import models
-from backend.database import engine, SessionLocal
-import add_default_categories
-import add_sample_data
+# # --- QUICK AND DIRTY SEEDING LOGIC ---
+# from backend import models
+# from backend.database import engine, SessionLocal
+# import add_default_categories
+# import add_sample_data
 
-# Create Tables
-models.Base.metadata.create_all(bind=engine)
+# # Create Tables
+# models.Base.metadata.create_all(bind=engine)
 
-# Seed Data
-try:
-    session = SessionLocal()
-    add_default_categories.seed_categories(session)
-    add_sample_data.seed_samples(session)
-    session.close()
-    print("🚀 Database initialized and seeded!")
-except Exception as e:
-    print(f"⚠️ Seeding issue: {e}")
-# -------------------------------------
+# # Seed Data
+# try:
+#     session = SessionLocal()
+#     add_default_categories.seed_categories(session)
+#     add_sample_data.seed_samples(session)
+#     session.close()
+#     print("🚀 Database initialized and seeded!")
+# except Exception as e:
+#     print(f"⚠️ Seeding issue: {e}")
+# # -------------------------------------
