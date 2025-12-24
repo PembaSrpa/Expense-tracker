@@ -121,18 +121,14 @@ def create_budget_comparison_chart(db: Session) -> str:
     spending = crud.get_spending_by_category(db, start_of_month, today)
 
     if not budgets:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        ax.text(0.5, 0.5, 'No budgets set',
-                ha='center', va='center', fontsize=16)
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
+        # ... (empty chart logic) ...
         return generate_chart_base64(fig)
 
     # Prepare data
-    categories = [b.category for b in budgets]
+    categories = [b.category_rel.name for b in budgets]
     budget_amounts = [b.monthly_limit for b in budgets]
     actual_amounts = [
-        next((s.total for s in spending if s.category == b.category), 0)
+        next((s.total for s in spending if s.category == b.category_rel.name), 0)
         for b in budgets
     ]
 

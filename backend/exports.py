@@ -32,7 +32,7 @@ def export_transactions_csv(db: Session,
             t.id,
             t.date.strftime('%Y-%m-%d'),
             f'{t.amount:.2f}',
-            t.category,
+            t.category_rel.name,
             t.description or '',
             t.transaction_type.value,
             t.created_at.strftime('%Y-%m-%d %H:%M:%S')
@@ -55,7 +55,7 @@ def export_budgets_csv(db: Session) -> str:
     for b in budgets:
         writer.writerow([
             b.id,
-            b.category,
+            b.category_rel.name,
             f'{b.monthly_limit:.2f}',
             b.start_date.strftime('%Y-%m-%d'),
             b.created_at.strftime('%Y-%m-%d %H:%M:%S')

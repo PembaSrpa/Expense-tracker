@@ -23,7 +23,7 @@ def transactions_to_dataframe(db: Session, start_date: Optional[date] = None,
         'id': t.id,
         'date': t.date,
         'amount': t.amount,
-        'category': t.category,
+        'category': t.category_rel.name,
         'description': t.description,
         'type': t.transaction_type.value,
         'created_at': t.created_at
@@ -61,7 +61,7 @@ def get_monthly_spending_trend(db: Session, months: int = 6) -> List[Dict]:
     return monthly.to_dict('records')
 
 
-def get_category_trend(db: Session, category: str, months: int = 6) -> List[Dict]:
+def get_category_trend(db: Session, category_name: str, months: int = 6) -> List[Dict]:
     """Get spending trend for a specific category"""
     end_date = date.today()
     start_date = end_date - timedelta(days=months * 30)
@@ -72,7 +72,7 @@ def get_category_trend(db: Session, category: str, months: int = 6) -> List[Dict
         return []
 
     # Filter by category and expenses
-    df_category = df[(df['category'] == category) & (df['type'] == 'expense')].copy()
+    df_category = df[(df['category'] == category_name) & (df['type'] == 'expense')].copy()
 
     if df_category.empty:
         return []
@@ -111,7 +111,7 @@ def get_spending_patterns(db: Session) -> Dict:
     df_expenses['period'] = pd.cut(df_expenses['day_of_month'],
                                     bins=[0, 10, 20, 31],
                                     labels=['Beginning', 'Middle', 'End'])
-    by_period = df_expenses.groupby('period')['amount'].sum().to_dict()
+    by_period = df_expenses.groupby('period', observed=False)['amount'].sum().to_dict()
 
     return {
         'weekday_avg': float(weekday_avg) if pd.notna(weekday_avg) else 0,
@@ -180,33 +180,28 @@ def get_unusual_spending(db: Session, std_threshold: float = 2.0) -> List[Dict]:
 
 
 def identify_savings_opportunities(db: Session) -> List[Dict]:
-    """Suggest categories where user can save money"""
     df = transactions_to_dataframe(db)
+    if df.empty: return []
 
-    if df.empty:
-        return []
+    df_expenses = df[df['type'] == 'expense'].copy()
 
-    df_expenses = df[df['type'] == 'expense']
-
-    # Get budgets
     budgets = db.query(Budget).all()
-    budget_dict = {b.category: b.monthly_limit for b in budgets}
+    budget_dict = {b.category_rel.name: b.monthly_limit for b in budgets}
 
-    # Calculate monthly average by category
     df_expenses['month'] = df_expenses['date'].dt.to_period('M')
     monthly_avg = df_expenses.groupby('category')['amount'].mean()
 
     opportunities = []
-    for category, avg_spending in monthly_avg.items():
-        if category in budget_dict:
-            budget = budget_dict[category]
-            if avg_spending > budget * 0.9:  # Spending >90% of budget
+    for category_name, avg_spending in monthly_avg.items():
+        if category_name in budget_dict:
+            limit = budget_dict[category_name]
+            if avg_spending > limit * 0.9:
                 opportunities.append({
-                    'category': category,
+                    'category': category_name,
                     'average_monthly_spending': float(avg_spending),
-                    'budget': float(budget),
-                    'potential_savings': float(avg_spending - budget) if avg_spending > budget else 0,
-                    'recommendation': f"Consider reducing {category} spending"
+                    'budget': float(limit),
+                    'potential_savings': float(max(0, avg_spending - limit)),
+                    'recommendation': f"Consider reducing {category_name} spending"
                 })
 
     return sorted(opportunities, key=lambda x: x['potential_savings'], reverse=True)
@@ -257,10 +252,6 @@ def predict_monthly_spending(db: Session, category: Optional[str] = None) -> Dic
 
 
 def get_budget_alerts(db: Session) -> List[Dict]:
-    """Get alerts for categories approaching or exceeding budget"""
-    from datetime import datetime
-
-    # Get current month's spending
     today = date.today()
     start_of_month = date(today.year, today.month, 1)
 
@@ -272,12 +263,13 @@ def get_budget_alerts(db: Session) -> List[Dict]:
     df_expenses = df[df['type'] == 'expense']
     current_spending = df_expenses.groupby('category')['amount'].sum()
 
-    # Get budgets
     budgets = db.query(Budget).all()
 
     alerts = []
     for budget in budgets:
-        spent = current_spending.get(budget.category, 0)
+        category_name = budget.category_rel.name
+        spent = current_spending.get(category_name, 0)
+
         percentage = (spent / budget.monthly_limit * 100) if budget.monthly_limit > 0 else 0
 
         alert_level = None
@@ -290,7 +282,7 @@ def get_budget_alerts(db: Session) -> List[Dict]:
 
         if alert_level:
             alerts.append({
-                'category': budget.category,
+                'category': category_name,
                 'budget': float(budget.monthly_limit),
                 'spent': float(spent),
                 'remaining': float(budget.monthly_limit - spent),

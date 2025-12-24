@@ -24,5 +24,5 @@ def git_push(message):
         print(f"An unexpected error occurred: {e}")
 
 # Usage
-message = "added export csv feature"
+message = "fixed categories table"
 git_push(message)

@@ -5,14 +5,14 @@ from typing import Optional, List
 
 # ============= TRANSACTION OPERATIONS =============
 
-def create_transaction(db: Session, date: date, amount: float, category: str,
+def create_transaction(db: Session, date: date, amount: float, category_id: int,
                       description: str, transaction_type: TransactionType):
     """Create a new transaction"""
     # Create a new Transaction object with the provided data
     db_transaction = Transaction(
         date=date,
         amount=amount,
-        category=category,
+        category_id=category_id,
         description=description,
         transaction_type=transaction_type
     )
@@ -26,7 +26,7 @@ def create_transaction(db: Session, date: date, amount: float, category: str,
 
 
 def get_transactions(db: Session, skip: int = 0, limit: int = 100,
-                     category: Optional[str] = None,
+                     category_id: Optional[int] = None,
                      start_date: Optional[date] = None,
                      end_date: Optional[date] = None,
                      transaction_type: Optional[TransactionType] = None):
@@ -35,8 +35,8 @@ def get_transactions(db: Session, skip: int = 0, limit: int = 100,
     query = db.query(Transaction)
 
     # Apply filters if provided
-    if category:
-        query = query.filter(Transaction.category == category)
+    if category_id:
+        query = query.filter(Transaction.category_id == category_id)
     if start_date:
         query = query.filter(Transaction.date >= start_date)
     if end_date:
@@ -57,7 +57,7 @@ def get_transaction_by_id(db: Session, transaction_id: int):
 def update_transaction(db: Session, transaction_id: int,
                       date: Optional[date] = None,
                       amount: Optional[float] = None,
-                      category: Optional[str] = None,
+                      category_id: Optional[int] = None,
                       description: Optional[str] = None,
                       transaction_type: Optional[TransactionType] = None):
     """Update a transaction"""
@@ -72,8 +72,8 @@ def update_transaction(db: Session, transaction_id: int,
         db_transaction.date = date
     if amount is not None:  # Check 'is not None' because amount could be 0
         db_transaction.amount = amount
-    if category:
-        db_transaction.category = category
+    if category_id:
+        db_transaction.category_id = category_id
     if description is not None:  # Description could be empty string
         db_transaction.description = description
     if transaction_type:
@@ -101,10 +101,10 @@ def delete_transaction(db: Session, transaction_id: int):
 
 # ============= BUDGET OPERATIONS =============
 
-def create_budget(db: Session, category: str, monthly_limit: float, start_date: date):
+def create_budget(db: Session, category_id: int, monthly_limit: float, start_date: date):
     """Create a new budget for a category"""
     db_budget = Budget(
-        category=category,
+        category_id=category_id,
         monthly_limit=monthly_limit,
         start_date=start_date
     )
@@ -119,9 +119,9 @@ def get_budgets(db: Session):
     return db.query(Budget).all()
 
 
-def get_budget_by_category(db: Session, category: str):
+def get_budget_by_category_id(db: Session, category_id: int):
     """Get budget for a specific category"""
-    return db.query(Budget).filter(Budget.category == category).first()
+    return db.query(Budget).filter(Budget.category_id == category_id).first()
 
 
 def update_budget(db: Session, budget_id: int,
@@ -178,6 +178,9 @@ def get_categories(db: Session, type: Optional[str] = None):
 
     return query.all()
 
+def get_category_by_id(db: Session, category_id: int):  # NEW
+    """Get a specific category by ID"""
+    return db.query(Category).filter(Category.id == category_id).first()
 
 def get_category_by_name(db: Session, name: str):
     """Get a specific category by name"""
@@ -192,16 +195,19 @@ def get_spending_by_category(db: Session, start_date: Optional[date] = None,
     from sqlalchemy import func
 
     query = db.query(
-        Transaction.category,
+        Category.name,
         func.sum(Transaction.amount).label('total')
-    ).filter(Transaction.transaction_type == TransactionType.expense)
+    ).join(Transaction, Transaction.category_id == Category.id)\
+     .filter(Transaction.transaction_type == TransactionType.expense)
 
     if start_date:
         query = query.filter(Transaction.date >= start_date)
     if end_date:
         query = query.filter(Transaction.date <= end_date)
 
-    return query.group_by(Transaction.category).all()
+    results = query.group_by(Category.name).all()
+
+    return [type('obj', (object,), {'category': r[0], 'total': r[1]})() for r in results]
 
 
 def get_total_income_expense(db: Session, start_date: Optional[date] = None,
@@ -237,16 +243,20 @@ def get_total_income_expense(db: Session, start_date: Optional[date] = None,
     }
 
 
-def get_budget_vs_actual(db: Session, category: str, start_date: date, end_date: date):
+def get_budget_vs_actual(db: Session, category_id: int, start_date: date, end_date: date):  # CHANGED
     """Compare budget to actual spending for a category"""
     from sqlalchemy import func
 
     # Get the budget
-    budget = get_budget_by_category(db, category)
+    budget = get_budget_by_category_id(db, category_id)
+
+    # Get category name
+    category = get_category_by_id(db, category_id)
+    category_name = category.name if category else "Unknown"
 
     # Get actual spending
     actual = db.query(func.sum(Transaction.amount)).filter(
-        Transaction.category == category,
+        Transaction.category_id == category_id,
         Transaction.transaction_type == TransactionType.expense,
         Transaction.date >= start_date,
         Transaction.date <= end_date
@@ -255,7 +265,7 @@ def get_budget_vs_actual(db: Session, category: str, start_date: date, end_date:
     budget_amount = budget.monthly_limit if budget else 0
 
     return {
-        'category': category,
+        'category': category_name,
         'budget': budget_amount,
         'actual': actual,
         'remaining': budget_amount - actual,

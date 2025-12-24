@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse
 class TransactionCreate(BaseModel):
     date: date
     amount: float
-    category: str
+    category_id: int
     description: Optional[str] = None
     transaction_type: TransactionType
 
@@ -26,7 +26,7 @@ class TransactionResponse(BaseModel):
     id: int
     date: date
     amount: float
-    category: str
+    category_id: int
     description: Optional[str]
     transaction_type: TransactionType
 
@@ -34,13 +34,13 @@ class TransactionResponse(BaseModel):
         from_attributes = True  # Allows Pydantic to work with SQLAlchemy models
 
 class BudgetCreate(BaseModel):
-    category: str
+    category_id: int
     monthly_limit: float
     start_date: date
 
 class BudgetResponse(BaseModel):
     id: int
-    category: str
+    category_id: int
     monthly_limit: float
     start_date: date
 
@@ -92,7 +92,7 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
         db=db,
         date=transaction.date,
         amount=transaction.amount,
-        category=transaction.category,
+        category_id=transaction.category_id,
         description=transaction.description,
         transaction_type=transaction.transaction_type
     )
@@ -101,7 +101,7 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
 def get_transactions(
     skip: int = 0,
     limit: int = 100,
-    category: Optional[str] = None,
+    category_id: Optional[int] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     transaction_type: Optional[TransactionType] = None,
@@ -112,11 +112,27 @@ def get_transactions(
         db=db,
         skip=skip,
         limit=limit,
-        category=category,
+        category_id=category_id,
         start_date=start_date,
         end_date=end_date,
         transaction_type=transaction_type
     )
+
+@app.put("/transactions/{transaction_id}", response_model=TransactionResponse)
+def update_transaction(transaction_id: int, transaction: TransactionCreate, db: Session = Depends(get_db)):
+    """Update an existing transaction"""
+    updated = crud.update_transaction(
+        db,
+        transaction_id,
+        date=transaction.date,
+        amount=transaction.amount,
+        category_id=transaction.category_id,  # CHANGED
+        description=transaction.description,
+        transaction_type=transaction.transaction_type
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return updated
 
 @app.get("/transactions/{transaction_id}", response_model=TransactionResponse)
 def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
@@ -141,7 +157,7 @@ def create_budget(budget: BudgetCreate, db: Session = Depends(get_db)):
     """Create a new budget"""
     return crud.create_budget(
         db=db,
-        category=budget.category,
+        category_id=budget.category_id,
         monthly_limit=budget.monthly_limit,
         start_date=budget.start_date
     )
@@ -158,6 +174,14 @@ def get_budget(category: str, db: Session = Depends(get_db)):
     if not budget:
         raise HTTPException(status_code=404, detail="Budget not found")
     return budget
+
+@app.delete("/budgets/{budget_id}")
+def delete_budget(budget_id: int, db: Session = Depends(get_db)):
+    """Delete a budget"""
+    success = crud.delete_budget(db, budget_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Budget not found")
+    return {"message": "Budget deleted successfully"}
 
 # ============= ANALYTICS ENDPOINTS =============
 
@@ -180,35 +204,15 @@ def get_income_expense(
     """Get total income and expenses"""
     return crud.get_total_income_expense(db, start_date, end_date)
 
-@app.get("/analytics/budget-vs-actual/{category}")
+@app.get("/analytics/budget-vs-actual/{category_id}")
 def get_budget_comparison(
-    category: str,
+    category_id: int,
     start_date: date,
     end_date: date,
     db: Session = Depends(get_db)
 ):
     """Compare budget to actual spending"""
-    return crud.get_budget_vs_actual(db, category, start_date, end_date)
-
-# ============= ADDITIONAL TRANSACTION ENDPOINTS =============
-
-@app.put("/transactions/{transaction_id}", response_model=TransactionResponse)
-def update_transaction(transaction_id: int, transaction: TransactionCreate, db: Session = Depends(get_db)):
-    """Update an existing transaction"""
-    updated = crud.update_transaction(db, transaction_id, **transaction.dict(exclude_unset=True))
-    if not updated:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-    return updated
-
-# ============= ADDITIONAL BUDGET ENDPOINTS =============
-
-@app.delete("/budgets/{budget_id}")
-def delete_budget(budget_id: int, db: Session = Depends(get_db)):
-    """Delete a budget"""
-    success = crud.delete_budget(db, budget_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Budget not found")
-    return {"message": "Budget deleted successfully"}
+    return crud.get_budget_vs_actual(db, category_id, start_date, end_date)
 
 # ============= CATEGORY ENDPOINTS =============
 

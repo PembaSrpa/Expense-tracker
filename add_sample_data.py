@@ -1,56 +1,49 @@
 from backend.database import SessionLocal
-from backend.crud import create_transaction, create_budget
+from backend.crud import create_transaction, create_budget, get_categories
 from backend.models import TransactionType
 from datetime import date, timedelta
 import random
 
 db = SessionLocal()
 
-# Sample categories
-categories = ['food', 'transport', 'entertainment', 'utilities', 'shopping', 'health']
+# Get all categories
+categories = get_categories(db, type='expense')
+category_ids = [c.id for c in categories]
+category_dict = {c.name: c.id for c in categories}
 
-# Add transactions for the last 6 months
-today = date.today()
+# Get income categories
+income_categories = get_categories(db, type='income')
+income_category_ids = [c.id for c in income_categories]
 
 print("Adding sample transactions...")
 for i in range(100):
-    # Random date in last 6 months
     days_ago = random.randint(0, 180)
-    transaction_date = today - timedelta(days=days_ago)
+    transaction_date = date.today() - timedelta(days=days_ago)
 
-    # Random category and amount
-    category = random.choice(categories)
-
-    # Different amount ranges for different categories
-    if category == 'food':
-        amount = random.uniform(10, 100)
-    elif category == 'transport':
-        amount = random.uniform(20, 150)
-    elif category == 'utilities':
-        amount = random.uniform(50, 200)
-    else:
-        amount = random.uniform(15, 120)
+    # Random category
+    category_id = random.choice(category_ids)
+    amount = random.uniform(15, 150)
 
     create_transaction(
         db=db,
         date=transaction_date,
         amount=round(amount, 2),
-        category=category,
-        description=f"Sample {category} expense",
+        category_id=category_id,
+        description=f"Sample expense",
         transaction_type=TransactionType.expense
     )
 
 print("✅ Added 100 sample transactions")
 
-# Add some income transactions
+# Add income
 print("Adding income transactions...")
 for i in range(6):
-    income_date = today - timedelta(days=i*30)
+    income_date = date.today() - timedelta(days=i*30)
     create_transaction(
         db=db,
         date=income_date,
         amount=3000.0,
-        category='salary',
+        category_id=income_category_ids[0],
         description='Monthly salary',
         transaction_type=TransactionType.income
     )
@@ -59,15 +52,15 @@ print("✅ Added 6 income transactions")
 
 # Add budgets
 print("Adding budgets...")
-for category in categories:
+for cat in categories[:6]:  # First 6 expense categories
     create_budget(
         db=db,
-        category=category,
+        category_id=cat.id,  # CHANGED
         monthly_limit=random.uniform(200, 500),
-        start_date=today - timedelta(days=180)
+        start_date=date.today() - timedelta(days=180)
     )
 
-print("✅ Added budgets for all categories")
+print("✅ Added budgets")
 print("\n🎉 Sample data added successfully!")
 
 db.close()
