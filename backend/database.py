@@ -15,6 +15,7 @@ DB_NAME = os.getenv("DB_NAME")
 
 # Create connection string
 DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Create the SQLAlchemy engine
 engine = create_engine(
