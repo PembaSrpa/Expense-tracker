@@ -2,10 +2,10 @@ import subprocess
 
 def git_push(message):
     try:
-        # 1. Generate requirements.txt
-        print("Updating requirements.txt...")
-        with open("requirements.txt", "w") as f:
-            subprocess.run(["pip", "freeze"], stdout=f, check=True)
+        # # 1. Generate requirements.txt
+        # print("Updating requirements.txt...")
+        # with open("requirements.txt", "w") as f:
+        #     subprocess.run(["pip", "freeze"], stdout=f, check=True)
 
         # 2. Stage all changes (including the new requirements.txt)
         subprocess.run(["git", "add", "."], check=True)
