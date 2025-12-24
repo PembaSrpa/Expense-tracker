@@ -6,29 +6,25 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 # Load environment variables from .env file
 load_dotenv()
 
-# Access Railway's default MySQL variable names
-DB_USER = os.getenv("MYSQLUSER")
-DB_PASSWORD = os.getenv("MYSQLPASSWORD")
-DB_HOST = os.getenv("MYSQLHOST")
-DB_PORT = os.getenv("MYSQLPORT", "3306") # Default to 3306 if missing
-DB_NAME = os.getenv("MYSQLDATABASE")
+# --- STEP 1: SMART VARIABLE DETECTION ---
+# We prioritize Railway names, but fallback to your EXACT local .env names
+user = os.getenv("MYSQLUSER") or os.getenv("DB_USER")
+pw = os.getenv("MYSQLPASSWORD") or os.getenv("DB_PASSWORD")
+host = os.getenv("MYSQLHOST") or os.getenv("DB_HOST")
+port = os.getenv("MYSQLPORT") or os.getenv("DB_PORT") or "3306"
+db_name = os.getenv("MYSQLDATABASE") or os.getenv("DB_NAME")
 
-# Safety Check: If Railway variables are missing, try your local ones
-if not DB_USER:
-    DB_USER = os.getenv("DB_USER")
-    DB_PASSWORD = os.getenv("DB_PASSWORD")
-    DB_HOST = os.getenv("DB_HOST")
-    DB_PORT = os.getenv("DB_PORT", "3306")
-    DB_NAME = os.getenv("DB_NAME")
+# --- STEP 2: BUILD THE URL ---
+# We check if we actually have a host. If not, we print a clear error.
+if host is None:
+    print("CRITICAL ERROR: Database Host not found. Check your .env or Railway Variables.")
+    DATABASE_URL = "mysql+pymysql://error_no_host" # This will trigger a clean error
+else:
+    DATABASE_URL = f"mysql+pymysql://{user}:{pw}@{host}:{port}/{db_name}"
 
-# Create connection string
-DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-
-# Create the SQLAlchemy engine
+# --- STEP 3: INITIALIZE ENGINE ---
 engine = create_engine(
     DATABASE_URL,
-    # echo=True  # Set to False in production to reduce logging
     echo=False
 )
 
