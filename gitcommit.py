@@ -24,5 +24,5 @@ def git_push(message):
         print(f"An unexpected error occurred: {e}")
 
 # Usage
-message = "finally"
+message = "removed recurring transactions"
 git_push(message)
