@@ -546,9 +546,9 @@ try:
     import generate_ml_data
 
     # ACTUALLY CALL THE FUNCTIONS (assuming they have main() or similar)
-    add_default_categories.main()
-    add_sample_data.main()
-    generate_ml_data.main()
+    add_default_categories.seed_categories()
+    add_sample_data.seed_samples()
+    generate_ml_data.seed_ml_historical_data()
 
     print("✅ Database reset and seeded successfully!")
     session.close()
