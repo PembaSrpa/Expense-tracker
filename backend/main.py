@@ -540,10 +540,15 @@ print("\n📋 Step 3: Seeding data...")
 try:
     session = SessionLocal()
 
-    # Import and run seeding scripts
+    # Import the modules
     import add_default_categories
     import add_sample_data
     import generate_ml_data
+
+    # ACTUALLY CALL THE FUNCTIONS (assuming they have main() or similar)
+    add_default_categories.main()
+    add_sample_data.main()
+    generate_ml_data.main()
 
     print("✅ Database reset and seeded successfully!")
     session.close()

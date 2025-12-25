@@ -24,5 +24,5 @@ def git_push(message):
         print(f"An unexpected error occurred: {e}")
 
 # Usage
-message = "removed recurring transactions"
+message = "seeding logic"
 git_push(message)
