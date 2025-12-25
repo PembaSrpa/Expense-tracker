@@ -183,28 +183,38 @@ def identify_savings_opportunities(db: Session) -> List[Dict]:
     df = transactions_to_dataframe(db)
     if df.empty: return []
 
-    df_expenses = df[df['type'] == 'expense'].copy()
+    # 1. Filter to only expenses from the LAST 30 DAYS for relevant advice
+    thirty_days_ago = pd.Timestamp.now() - pd.Timedelta(days=30)
+    df_expenses = df[(df['type'] == 'expense') & (df['date'] >= thirty_days_ago)].copy()
 
+    if df_expenses.empty: return []
+
+    # 2. Get budgets
     budgets = db.query(Budget).all()
     budget_dict = {b.category_rel.name: b.monthly_limit for b in budgets}
 
-    df_expenses['month'] = df_expenses['date'].dt.to_period('M')
-    monthly_avg = df_expenses.groupby('category')['amount'].mean()
+    # 3. Calculate average spending for this recent period
+    # We group by category and sum the total spent in the last 30 days
+    recent_spending = df_expenses.groupby('category')['amount'].sum()
 
     opportunities = []
-    for category_name, avg_spending in monthly_avg.items():
+    for category_name, total_spent in recent_spending.items():
         if category_name in budget_dict:
             limit = budget_dict[category_name]
-            if avg_spending > limit * 0.9:
+            if total_spent > limit * 0.75:
+                potential_savings = max(0, total_spent - (limit * 0.8)) # Target 80% of budget
+
                 opportunities.append({
                     'category': category_name,
-                    'average_monthly_spending': float(avg_spending),
-                    'budget': float(limit),
-                    'potential_savings': float(max(0, avg_spending - limit)),
-                    'recommendation': f"Consider reducing {category_name} spending"
+                    'current_period_spending': float(total_spent),
+                    'budget_limit': float(limit),
+                    'status': "Over Budget" if total_spent > limit else "Approaching Limit",
+                    'potential_savings': float(potential_savings),
+                    'recommendation': f"You've used {int((total_spent/limit)*100)}% of your {category_name} budget. Try to limit spending here for the next week."
                 })
 
-    return sorted(opportunities, key=lambda x: x['potential_savings'], reverse=True)
+    # Sort by the most "critical" (highest percentage of budget used)
+    return sorted(opportunities, key=lambda x: x['current_period_spending']/x['budget_limit'], reverse=True)
 
 
 # ============= PREDICTIONS =============
@@ -250,27 +260,50 @@ def predict_monthly_spending(db: Session, category: Optional[str] = None) -> Dic
         'confidence': 'medium' if len(monthly) >= 6 else 'low'
     }
 
-
 def get_budget_alerts(db: Session) -> List[Dict]:
+    """Get alerts for categories approaching or exceeding budget"""
+    from datetime import datetime
+    from sqlalchemy import func
+
+    # Get current month's spending
     today = date.today()
     start_of_month = date(today.year, today.month, 1)
 
-    df = transactions_to_dataframe(db, start_of_month, today)
+    # Query transactions with category relationship
+    transactions = db.query(Transaction).filter(
+        Transaction.date >= start_of_month,
+        Transaction.date <= today,
+        Transaction.transaction_type == TransactionType.expense
+    ).all()
 
-    if df.empty:
+    if not transactions:
+        print("DEBUG: No transactions this month")
         return []
 
-    df_expenses = df[df['type'] == 'expense']
-    current_spending = df_expenses.groupby('category')['amount'].sum()
+    # Group spending by category_id
+    spending_by_category = {}
+    for t in transactions:
+        if t.category_id not in spending_by_category:
+            spending_by_category[t.category_id] = 0
+        spending_by_category[t.category_id] += t.amount
 
+    print(f"DEBUG: Spending by category: {spending_by_category}")
+
+    # Get all budgets
     budgets = db.query(Budget).all()
+
+    if not budgets:
+        print("DEBUG: No budgets found")
+        return []
+
+    print(f"DEBUG: Found {len(budgets)} budgets")
 
     alerts = []
     for budget in budgets:
-        category_name = budget.category_rel.name
-        spent = current_spending.get(category_name, 0)
-
+        spent = spending_by_category.get(budget.category_id, 0)
         percentage = (spent / budget.monthly_limit * 100) if budget.monthly_limit > 0 else 0
+
+        print(f"DEBUG: Category {budget.category_rel.name}: spent=${spent:.2f}, budget=${budget.monthly_limit:.2f}, percentage={percentage:.1f}%")
 
         alert_level = None
         if percentage >= 100:
@@ -282,7 +315,7 @@ def get_budget_alerts(db: Session) -> List[Dict]:
 
         if alert_level:
             alerts.append({
-                'category': category_name,
+                'category': budget.category_rel.name,
                 'budget': float(budget.monthly_limit),
                 'spent': float(spent),
                 'remaining': float(budget.monthly_limit - spent),
@@ -291,4 +324,5 @@ def get_budget_alerts(db: Session) -> List[Dict]:
                 'message': f"{percentage:.1f}% of budget used"
             })
 
+    print(f"DEBUG: Generated {len(alerts)} alerts")
     return sorted(alerts, key=lambda x: x['percentage'], reverse=True)

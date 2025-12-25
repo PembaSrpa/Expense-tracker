@@ -65,12 +65,14 @@ def export_budgets_csv(db: Session) -> str:
 
 
 def export_summary_csv(db: Session,
-                      start_date: Optional[date] = None,
-                      end_date: Optional[date] = None) -> str:
+                       start_date: Optional[date] = None,
+                       end_date: Optional[date] = None) -> str:
     """Export spending summary by category to CSV"""
     from backend.crud import get_spending_by_category, get_total_income_expense
+    import io
+    import csv
 
-    # Get spending by category
+    # Get spending by category and overall totals
     spending = get_spending_by_category(db, start_date, end_date)
     totals = get_total_income_expense(db, start_date, end_date)
 
@@ -82,7 +84,7 @@ def export_summary_csv(db: Session,
     writer.writerow(['Period', f'{start_date or "All time"} to {end_date or "Present"}'])
     writer.writerow([])
 
-    # Totals
+    # Totals - accessing dictionary keys
     writer.writerow(['Total Income', f"${totals['total_income']:.2f}"])
     writer.writerow(['Total Expenses', f"${totals['total_expense']:.2f}"])
     writer.writerow(['Net (Savings)', f"${totals['net']:.2f}"])
@@ -93,8 +95,13 @@ def export_summary_csv(db: Session,
     writer.writerow(['Category', 'Amount', 'Percentage'])
 
     total_expenses = totals['total_expense']
+
+    # FIX: Use bracket notation [] instead of dot notation .
     for s in spending:
-        percentage = (s.total / total_expenses * 100) if total_expenses > 0 else 0
-        writer.writerow([s.category, f'${s.total:.2f}', f'{percentage:.1f}%'])
+        amount = float(s['total'])
+        category_name = s['category']
+
+        percentage = (amount / total_expenses * 100) if total_expenses > 0 else 0
+        writer.writerow([category_name, f'${amount:.2f}', f'{percentage:.1f}%'])
 
     return output.getvalue()

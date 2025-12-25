@@ -128,7 +128,7 @@ def create_budget_comparison_chart(db: Session) -> str:
     categories = [b.category_rel.name for b in budgets]
     budget_amounts = [b.monthly_limit for b in budgets]
     actual_amounts = [
-        next((s.total for s in spending if s.category == b.category_rel.name), 0)
+        next((s['total'] for s in spending if s['category'] == b.category_rel.name), 0)
         for b in budgets
     ]
 

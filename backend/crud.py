@@ -1,14 +1,15 @@
-from sqlalchemy.orm import Session
-from backend.models import Transaction, Budget, Category, TransactionType
-from datetime import datetime, date
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
+from backend.models import Transaction, Budget, Category, TransactionType, RecurringTransaction
+from datetime import datetime, date, timedelta
+from dateutil.relativedelta import relativedelta
 from typing import Optional, List
 
 # ============= TRANSACTION OPERATIONS =============
 
 def create_transaction(db: Session, date: date, amount: float, category_id: int,
-                      description: str, transaction_type: TransactionType):
+                       description: str, transaction_type: TransactionType):
     """Create a new transaction"""
-    # Create a new Transaction object with the provided data
     db_transaction = Transaction(
         date=date,
         amount=amount,
@@ -16,11 +17,8 @@ def create_transaction(db: Session, date: date, amount: float, category_id: int,
         description=description,
         transaction_type=transaction_type
     )
-    # Add it to the session (staging area)
     db.add(db_transaction)
-    # Save changes to database
     db.commit()
-    # Refresh to get the auto-generated ID from database
     db.refresh(db_transaction)
     return db_transaction
 
@@ -31,10 +29,8 @@ def get_transactions(db: Session, skip: int = 0, limit: int = 100,
                      end_date: Optional[date] = None,
                      transaction_type: Optional[TransactionType] = None):
     """Get all transactions with optional filters"""
-    # Start a query on the Transaction table
-    query = db.query(Transaction)
+    query = db.query(Transaction).options(joinedload(Transaction.category_rel))
 
-    # Apply filters if provided
     if category_id:
         query = query.filter(Transaction.category_id == category_id)
     if start_date:
@@ -44,56 +40,75 @@ def get_transactions(db: Session, skip: int = 0, limit: int = 100,
     if transaction_type:
         query = query.filter(Transaction.transaction_type == transaction_type)
 
-    # Order by date (newest first) and apply pagination
-    return query.order_by(Transaction.date.desc()).offset(skip).limit(limit).all()
+    transactions = query.order_by(Transaction.date.desc()).offset(skip).limit(limit).all()
+
+    # Inject category_name for Pydantic schema compatibility
+    for txn in transactions:
+        if not hasattr(txn, "category_name"):
+            txn.category_name = txn.category_rel.name if txn.category_rel else "Uncategorized"
+
+    return transactions
 
 
 def get_transaction_by_id(db: Session, transaction_id: int):
-    """Get a specific transaction by ID"""
-    # Query and return the first match (or None if not found)
-    return db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    """Get a specific transaction by ID with category info loaded"""
+    # Use joinedload to 'eagerly' grab the category info
+    transaction = db.query(Transaction)\
+        .options(joinedload(Transaction.category_rel))\
+        .filter(Transaction.id == transaction_id)\
+        .first()
+
+    if not transaction:
+        return None
+
+    # Inject the missing field for Pydantic schema
+    if not hasattr(transaction, "category_name"):
+        transaction.category_name = transaction.category_rel.name if transaction.category_rel else "Uncategorized"
+
+    return transaction
 
 
 def update_transaction(db: Session, transaction_id: int,
-                      date: Optional[date] = None,
-                      amount: Optional[float] = None,
-                      category_id: Optional[int] = None,
-                      description: Optional[str] = None,
-                      transaction_type: Optional[TransactionType] = None):
+                       date: Optional[date] = None,
+                       amount: Optional[float] = None,
+                       category_id: Optional[int] = None,
+                       description: Optional[str] = None,
+                       transaction_type: Optional[TransactionType] = None):
     """Update a transaction"""
-    # Find the transaction
-    db_transaction = get_transaction_by_id(db, transaction_id)
+    # Fetch raw object directly for update (avoids 'fake attribute' conflicts)
+    db_transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
 
     if not db_transaction:
         return None
 
-    # Update only the fields that were provided
     if date:
         db_transaction.date = date
-    if amount is not None:  # Check 'is not None' because amount could be 0
+    if amount is not None:
         db_transaction.amount = amount
     if category_id:
         db_transaction.category_id = category_id
-    if description is not None:  # Description could be empty string
+    if description is not None:
         db_transaction.description = description
     if transaction_type:
         db_transaction.transaction_type = transaction_type
 
-    # Save changes
     db.commit()
     db.refresh(db_transaction)
+
+    # Re-attach the category name so the response doesn't crash
+    db_transaction.category_name = db_transaction.category_rel.name if db_transaction.category_rel else "Uncategorized"
+
     return db_transaction
 
 
 def delete_transaction(db: Session, transaction_id: int):
     """Delete a transaction"""
-    # Find the transaction
-    db_transaction = get_transaction_by_id(db, transaction_id)
+    # Fetch raw object (no joinedload needed for deletion)
+    db_transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
 
     if not db_transaction:
         return False
 
-    # Delete it
     db.delete(db_transaction)
     db.commit()
     return True
@@ -116,7 +131,9 @@ def create_budget(db: Session, category_id: int, monthly_limit: float, start_dat
 
 def get_budgets(db: Session):
     """Get all budgets"""
-    return db.query(Budget).all()
+    # Join category to ensure names are available if needed
+    budgets = db.query(Budget).options(joinedload(Budget.category_rel)).all()
+    return budgets
 
 
 def get_budget_by_category_id(db: Session, category_id: int):
@@ -125,8 +142,8 @@ def get_budget_by_category_id(db: Session, category_id: int):
 
 
 def update_budget(db: Session, budget_id: int,
-                 monthly_limit: Optional[float] = None,
-                 start_date: Optional[date] = None):
+                  monthly_limit: Optional[float] = None,
+                  start_date: Optional[date] = None):
     """Update a budget"""
     db_budget = db.query(Budget).filter(Budget.id == budget_id).first()
 
@@ -172,13 +189,11 @@ def create_category(db: Session, name: str, type: str):
 def get_categories(db: Session, type: Optional[str] = None):
     """Get all categories, optionally filtered by type"""
     query = db.query(Category)
-
     if type:
         query = query.filter(Category.type == type)
-
     return query.all()
 
-def get_category_by_id(db: Session, category_id: int):  # NEW
+def get_category_by_id(db: Session, category_id: int):
     """Get a specific category by ID"""
     return db.query(Category).filter(Category.id == category_id).first()
 
@@ -192,8 +207,6 @@ def get_category_by_name(db: Session, name: str):
 def get_spending_by_category(db: Session, start_date: Optional[date] = None,
                              end_date: Optional[date] = None):
     """Get total spending grouped by category"""
-    from sqlalchemy import func
-
     query = db.query(
         Category.name,
         func.sum(Transaction.amount).label('total')
@@ -207,13 +220,13 @@ def get_spending_by_category(db: Session, start_date: Optional[date] = None,
 
     results = query.group_by(Category.name).all()
 
-    return [type('obj', (object,), {'category': r[0], 'total': r[1]})() for r in results]
+    # Return as a list of simple objects/dicts
+    return [{'category': r[0], 'total': float(r[1])} for r in results]
 
 
 def get_total_income_expense(db: Session, start_date: Optional[date] = None,
                              end_date: Optional[date] = None):
     """Get total income and expenses"""
-    from sqlalchemy import func
 
     # Get total income
     income_query = db.query(func.sum(Transaction.amount)).filter(
@@ -225,7 +238,6 @@ def get_total_income_expense(db: Session, start_date: Optional[date] = None,
         Transaction.transaction_type == TransactionType.expense
     )
 
-    # Apply date filters
     if start_date:
         income_query = income_query.filter(Transaction.date >= start_date)
         expense_query = expense_query.filter(Transaction.date >= start_date)
@@ -237,15 +249,14 @@ def get_total_income_expense(db: Session, start_date: Optional[date] = None,
     total_expense = expense_query.scalar() or 0
 
     return {
-        'total_income': total_income,
-        'total_expense': total_expense,
-        'net': total_income - total_expense
+        'total_income': float(total_income),
+        'total_expense': float(total_expense),
+        'net': float(total_income - total_expense)
     }
 
 
-def get_budget_vs_actual(db: Session, category_id: int, start_date: date, end_date: date):  # CHANGED
+def get_budget_vs_actual(db: Session, category_id: int, start_date: date, end_date: date):
     """Compare budget to actual spending for a category"""
-    from sqlalchemy import func
 
     # Get the budget
     budget = get_budget_by_category_id(db, category_id)
@@ -262,12 +273,147 @@ def get_budget_vs_actual(db: Session, category_id: int, start_date: date, end_da
         Transaction.date <= end_date
     ).scalar() or 0
 
-    budget_amount = budget.monthly_limit if budget else 0
+    budget_amount = float(budget.monthly_limit) if budget else 0.0
+    actual_float = float(actual)
 
     return {
         'category': category_name,
         'budget': budget_amount,
-        'actual': actual,
-        'remaining': budget_amount - actual,
-        'percentage_used': (actual / budget_amount * 100) if budget_amount > 0 else 0
+        'actual': actual_float,
+        'remaining': budget_amount - actual_float,
+        'percentage_used': (actual_float / budget_amount * 100) if budget_amount > 0 else 0
     }
+
+# ============= RECURRING TRANSACTION OPERATIONS =============
+
+def create_recurring_transaction(db: Session, category_id: int, amount: float,
+                                 description: str, transaction_type: TransactionType,
+                                 frequency: str, start_date: date, end_date: Optional[date] = None):
+    """Create a new recurring transaction"""
+
+    # Calculate next occurrence based on frequency
+    if frequency == 'daily':
+        next_occurrence = start_date + timedelta(days=1)
+    elif frequency == 'weekly':
+        next_occurrence = start_date + timedelta(weeks=1)
+    elif frequency == 'monthly':
+        next_occurrence = start_date + relativedelta(months=1)
+    elif frequency == 'yearly':
+        next_occurrence = start_date + relativedelta(years=1)
+    else:
+        raise ValueError("Frequency must be 'daily', 'weekly', 'monthly', or 'yearly'")
+
+    db_recurring = RecurringTransaction(
+        category_id=category_id,
+        amount=amount,
+        description=description,
+        transaction_type=transaction_type,
+        frequency=frequency,
+        start_date=start_date,
+        end_date=end_date,
+        next_occurrence=next_occurrence,
+        is_active=1
+    )
+    db.add(db_recurring)
+    db.commit()
+    db.refresh(db_recurring)
+    return db_recurring
+
+
+def get_recurring_transactions(db: Session, active_only: bool = True):
+    """Get all recurring transactions"""
+    query = db.query(RecurringTransaction).options(joinedload(RecurringTransaction.category_rel))
+    if active_only:
+        query = query.filter(RecurringTransaction.is_active == 1)
+    return query.all()
+
+
+def get_recurring_transaction_by_id(db: Session, recurring_id: int):
+    """Get a specific recurring transaction"""
+    return db.query(RecurringTransaction)\
+        .options(joinedload(RecurringTransaction.category_rel))\
+        .filter(RecurringTransaction.id == recurring_id).first()
+
+
+def update_recurring_transaction(db: Session, recurring_id: int,
+                                 amount: Optional[float] = None,
+                                 description: Optional[str] = None,
+                                 is_active: Optional[int] = None):
+    """Update a recurring transaction"""
+    db_recurring = db.query(RecurringTransaction).filter(RecurringTransaction.id == recurring_id).first()
+
+    if not db_recurring:
+        return None
+
+    if amount is not None:
+        db_recurring.amount = amount
+    if description is not None:
+        db_recurring.description = description
+    if is_active is not None:
+        db_recurring.is_active = is_active
+
+    db.commit()
+    db.refresh(db_recurring)
+    return db_recurring
+
+
+def delete_recurring_transaction(db: Session, recurring_id: int):
+    """Delete a recurring transaction"""
+    db_recurring = db.query(RecurringTransaction).filter(RecurringTransaction.id == recurring_id).first()
+
+    if not db_recurring:
+        return False
+
+    db.delete(db_recurring)
+    db.commit()
+    return True
+
+
+def process_recurring_transactions(db: Session):
+    """Process all due recurring transactions and create actual transactions"""
+    today = date.today()
+
+    # Get all active recurring transactions that are due
+    recurring = db.query(RecurringTransaction).options(joinedload(RecurringTransaction.category_rel)).filter(
+        RecurringTransaction.is_active == 1,
+        RecurringTransaction.next_occurrence <= today
+    ).all()
+
+    created_count = 0
+
+    for rec in recurring:
+        # Check if we should stop (end_date reached)
+        if rec.end_date and today > rec.end_date:
+            rec.is_active = 0
+            db.commit()
+            continue
+
+        # Create the actual transaction
+        # Note: We must ensure description is not None.
+        # Since we used joinedload, category_rel is safe to access.
+        cat_name = rec.category_rel.name if rec.category_rel else "Unknown"
+        desc = rec.description if rec.description else f"Recurring: {cat_name}"
+
+        create_transaction(
+            db=db,
+            date=rec.next_occurrence,
+            amount=rec.amount,
+            category_id=rec.category_id,
+            description=desc,
+            transaction_type=rec.transaction_type
+        )
+        created_count += 1
+
+        # Calculate next occurrence
+        if rec.frequency == 'daily':
+            rec.next_occurrence = rec.next_occurrence + timedelta(days=1)
+        elif rec.frequency == 'weekly':
+            rec.next_occurrence = rec.next_occurrence + timedelta(weeks=1)
+        elif rec.frequency == 'monthly':
+            rec.next_occurrence = rec.next_occurrence + relativedelta(months=1)
+        elif rec.frequency == 'yearly':
+            rec.next_occurrence = rec.next_occurrence + relativedelta(years=1)
+
+        db.commit()
+
+    return created_count
