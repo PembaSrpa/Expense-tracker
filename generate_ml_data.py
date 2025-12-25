@@ -1,23 +1,31 @@
 from sqlalchemy.orm import Session
+from backend.database import SessionLocal
 from backend.crud import create_transaction, get_categories
 from backend.models import TransactionType
 from datetime import date, timedelta
 import random
 
-def seed_ml_historical_data(db: Session, months_back: int = 18):
+def seed_ml_historical_data(db=None, months_back=12):
     """
     Generates realistic historical data with a slight upward trend
     to test Scikit-learn prediction models.
     """
+    # Pattern fix: Handle session same as seed_samples
+    local_session = False
+    if db is None:
+        db = SessionLocal()
+        local_session = True
+
     print(f"Generating historical data for {months_back} months...")
 
     # 1. Get categories
-    expense_categories = get_categories(db) # Standardizing to get all first
-    income_categories = [c for c in expense_categories if "Salary" in c.name or "Income" in c.name]
-    actual_expenses = [c for c in expense_categories if c not in income_categories]
+    all_categories = get_categories(db)
+    income_categories = [c for c in all_categories if "Salary" in c.name or "Income" in c.name]
+    actual_expenses = [c for c in all_categories if c not in income_categories]
 
     if not actual_expenses:
         print("❌ No expense categories found! Please seed categories first.")
+        if local_session: db.close()
         return
 
     # 2. Setup dates
@@ -44,14 +52,11 @@ def seed_ml_historical_data(db: Session, months_back: int = 18):
             num_transactions = random.randint(20, 40)
 
             for _ in range(num_transactions):
-                # Random date in the current month
                 day_offset = random.randint(0, (month_end - month_start).days)
                 trans_date = month_start + timedelta(days=day_offset)
 
-                # Pick a random expense category
                 category = random.choice(actual_expenses)
 
-                # Base amount logic based on category name
                 if 'Food' in category.name:
                     base_amount = random.uniform(10, 80)
                 elif 'Transport' in category.name:
@@ -61,7 +66,6 @@ def seed_ml_historical_data(db: Session, months_back: int = 18):
                 else:
                     base_amount = random.uniform(15, 120)
 
-                # Apply trend and slight noise
                 final_amount = round(base_amount * trend_multiplier * random.uniform(0.8, 1.2), 2)
 
                 create_transaction(
@@ -89,16 +93,16 @@ def seed_ml_historical_data(db: Session, months_back: int = 18):
             current_date = next_month
             month_count += 1
 
-        db.commit() # Save all transactions at once for better performance
+        db.commit()
         print(f"\n🎉 Successfully created transactions for {month_count} months!")
 
     except Exception as e:
         db.rollback()
         print(f"⚠️ Error during ML data generation: {e}")
+    finally:
+        # Crucial: Clean up session if it was created locally
+        if local_session:
+            db.close()
 
-# If you want to run it standalone:
 if __name__ == "__main__":
-    from backend.database import SessionLocal
-    db_session = SessionLocal()
-    seed_ml_historical_data(db_session)
-    db_session.close()
+    seed_ml_historical_data()
