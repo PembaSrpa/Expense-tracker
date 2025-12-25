@@ -24,5 +24,5 @@ def git_push(message):
         print(f"An unexpected error occurred: {e}")
 
 # Usage
-message = "seeding logic 3"
+message = "removing seeding logic 3"
 git_push(message)

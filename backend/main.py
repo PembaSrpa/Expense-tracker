@@ -501,61 +501,61 @@ def forecast_next_year(db: Session = Depends(get_db)):
     """Forecast total spending for next 12 months"""
     return ml_predictions.forecast_next_year(db)
 
-# --- QUICK AND DIRTY SEEDING LOGIC ---
-from backend import models
-from backend.database import engine, SessionLocal
-from sqlalchemy import text
+# # --- QUICK AND DIRTY SEEDING LOGIC ---
+# from backend import models
+# from backend.database import engine, SessionLocal
+# from sqlalchemy import text
 
-print("=" * 60)
-print("🔥 RESETTING AND SEEDING DATABASE")
-print("=" * 60)
+# print("=" * 60)
+# print("🔥 RESETTING AND SEEDING DATABASE")
+# print("=" * 60)
 
-# Step 1: Drop all tables
-print("\n📋 Step 1: Dropping all tables...")
-try:
-    with engine.connect() as connection:
-        connection.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
+# # Step 1: Drop all tables
+# print("\n📋 Step 1: Dropping all tables...")
+# try:
+#     with engine.connect() as connection:
+#         connection.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
 
-        tables_to_drop = ['transactions', 'budgets', 'categories']
-        for table in tables_to_drop:
-            connection.execute(text(f"DROP TABLE IF EXISTS {table}"))
-            print(f"  ✅ Dropped: {table}")
+#         tables_to_drop = ['transactions', 'budgets', 'categories']
+#         for table in tables_to_drop:
+#             connection.execute(text(f"DROP TABLE IF EXISTS {table}"))
+#             print(f"  ✅ Dropped: {table}")
 
-        connection.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
-        connection.commit()
-    print("✅ All tables dropped!")
-except Exception as e:
-    print(f"⚠️ Drop tables error: {e}")
+#         connection.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
+#         connection.commit()
+#     print("✅ All tables dropped!")
+# except Exception as e:
+#     print(f"⚠️ Drop tables error: {e}")
 
-# Step 2: Create all tables
-print("\n📋 Step 2: Creating tables...")
-try:
-    models.Base.metadata.create_all(bind=engine)
-    print("✅ All tables created!")
-except Exception as e:
-    print(f"⚠️ Create tables error: {e}")
+# # Step 2: Create all tables
+# print("\n📋 Step 2: Creating tables...")
+# try:
+#     models.Base.metadata.create_all(bind=engine)
+#     print("✅ All tables created!")
+# except Exception as e:
+#     print(f"⚠️ Create tables error: {e}")
 
-# Step 3: Seed data
-print("\n📋 Step 3: Seeding data...")
-try:
-    session = SessionLocal()
+# # Step 3: Seed data
+# print("\n📋 Step 3: Seeding data...")
+# try:
+#     session = SessionLocal()
 
-    # Import the modules
-    import add_default_categories
-    import add_sample_data
-    import generate_ml_data
+#     # Import the modules
+#     import add_default_categories
+#     import add_sample_data
+#     import generate_ml_data
 
-    # ACTUALLY CALL THE FUNCTIONS (assuming they have main() or similar)
-    add_default_categories.seed_categories()
-    add_sample_data.seed_samples()
-    generate_ml_data.seed_ml_historical_data()
+#     # ACTUALLY CALL THE FUNCTIONS (assuming they have main() or similar)
+#     add_default_categories.seed_categories()
+#     add_sample_data.seed_samples()
+#     generate_ml_data.seed_ml_historical_data()
 
-    print("✅ Database reset and seeded successfully!")
-    session.close()
-except Exception as e:
-    print(f"⚠️ Seeding error: {e}")
+#     print("✅ Database reset and seeded successfully!")
+#     session.close()
+# except Exception as e:
+#     print(f"⚠️ Seeding error: {e}")
 
-print("\n" + "=" * 60)
-print("🎉 DATABASE READY!")
-print("=" * 60)
-# -------------------------------------
+# print("\n" + "=" * 60)
+# print("🎉 DATABASE READY!")
+# print("=" * 60)
+# # -------------------------------------
