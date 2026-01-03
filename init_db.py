@@ -1,14 +1,23 @@
-from backend.database import engine, Base
-from backend.models import Category, Transaction, Budget
+from backend.database import engine, SessionLocal
+from backend import models, crud
 
-def init_database():
-    print("Creating database tables...")
-    Base.metadata.create_all(bind=engine)
-    print("✅ All tables created successfully!")
-    print("\nTables created:")
-    print("- categories")
-    print("- transactions")
-    print("- budgets")
+def init():
+    models.Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+
+    existing = crud.get_categories(db)
+    if not existing:
+        categories = [
+            ("Food", "expense"),
+            ("Rent", "expense"),
+            ("Salary", "income"),
+            ("Utilities", "expense"),
+            ("Freelance", "income")
+        ]
+        for name, cat_type in categories:
+            crud.create_category(db, name=name, type=cat_type)
+        db.commit()
+    db.close()
 
 if __name__ == "__main__":
-    init_database()
+    init()
