@@ -6,35 +6,41 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 # Load environment variables from .env file
 load_dotenv()
 
-# --- STEP 1: SMART VARIABLE DETECTION ---
-# We prioritize Railway names, but fallback to your EXACT local .env names
-user = os.getenv("MYSQLUSER") or os.getenv("DB_USER")
-pw = os.getenv("MYSQLPASSWORD") or os.getenv("DB_PASSWORD")
-host = os.getenv("MYSQLHOST") or os.getenv("DB_HOST")
-port = os.getenv("MYSQLPORT") or os.getenv("DB_PORT") or "3306"
-db_name = os.getenv("MYSQLDATABASE") or os.getenv("DB_NAME")
+# --- STEP 1: SMART VARIABLE DETECTION (SUPABASE VERSION) ---
+# Supabase gives you a full URL, which is much safer than building it manually
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# --- STEP 2: BUILD THE URL ---
-# We check if we actually have a host. If not, we print a clear error.
-if host is None:
-    print("CRITICAL ERROR: Database Host not found. Check your .env or Railway Variables.")
-    DATABASE_URL = "mysql+pymysql://error_no_host" # This will trigger a clean error
+# Fallback: If you are still using individual variables in your .env
+if not DATABASE_URL:
+    user = os.getenv("DB_USER", "postgres")
+    pw = os.getenv("DB_PASSWORD")
+    host = os.getenv("DB_HOST")
+    # Remember: Use 6543 for Transaction Pooling on Render!
+    port = os.getenv("DB_PORT", "6543")
+    db_name = os.getenv("DB_NAME", "postgres")
+
+    if host:
+        DATABASE_URL = f"postgresql://{user}:{pw}@{host}:{port}/{db_name}"
+
+# --- STEP 2: BUILD & FIX THE URL ---
+if DATABASE_URL is None:
+    print("CRITICAL ERROR: DATABASE_URL not found. Check your .env or Render Variables.")
 else:
-    DATABASE_URL = f"mysql+pymysql://{user}:{pw}@{host}:{port}/{db_name}"
+    # Ensure it starts with postgresql:// and not mysql
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # --- STEP 3: INITIALIZE ENGINE ---
+# We added pooling arguments because Supabase connections can time out on Render
 engine = create_engine(
     DATABASE_URL,
-    echo=False
+    pool_pre_ping=True,
+    pool_recycle=300
 )
 
-# Create a SessionLocal class - each instance will be a database session
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Create a Base class for our models
 Base = declarative_base()
 
-# Dependency to get DB session
 def get_db():
     db = SessionLocal()
     try:

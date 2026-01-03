@@ -1,28 +1,26 @@
 from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Enum as SQLEnum, ForeignKey
 from sqlalchemy.orm import relationship
-from backend.database import Base
+from .database import Base # Adjusted import path
 from datetime import datetime, timezone
 import enum
 
-# Enum for transaction types
+# 1. ENUM Fix: PostgreSQL requires a 'name' for the ENUM type in the DB
 class TransactionType(enum.Enum):
     income = "income"
     expense = "expense"
 
-# Category model
 class Category(Base):
     __tablename__ = "categories"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False, unique=True)
-    type = Column(String(20), nullable=False)  # 'income' or 'expense'
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    type = Column(String(20), nullable=False)
+    # 2. TIMEZONE Fix: Best practice for Supabase/Postgres is timezone-aware
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    # Relationships
     transactions = relationship("Transaction", back_populates="category_rel")
     budgets = relationship("Budget", back_populates="category_rel")
 
-# Transaction model
 class Transaction(Base):
     __tablename__ = "transactions"
 
@@ -31,21 +29,20 @@ class Transaction(Base):
     amount = Column(Float, nullable=False)
     category_id = Column(Integer, ForeignKey('categories.id'), nullable=False)
     description = Column(String(255))
-    transaction_type = Column(SQLEnum(TransactionType), nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    # ENUM name is mandatory for Postgres native types
+    transaction_type = Column(SQLEnum(TransactionType, name="transaction_type_enum"), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    # Relationship
     category_rel = relationship("Category", back_populates="transactions")
 
-# Budget model
 class Budget(Base):
     __tablename__ = "budgets"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    # Ensure this stays unique if one category can only have one budget
     category_id = Column(Integer, ForeignKey('categories.id'), nullable=False, unique=True)
     monthly_limit = Column(Float, nullable=False)
     start_date = Column(Date, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    # Relationship
     category_rel = relationship("Category", back_populates="budgets")
