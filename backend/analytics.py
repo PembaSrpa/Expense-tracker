@@ -1,11 +1,10 @@
 import pandas as pd
 from sqlalchemy.orm import Session
-from backend.models import Transaction, Budget, TransactionType
-from datetime import datetime, date, timedelta
+from backend.models import Transaction, TransactionType
+from datetime import date, timedelta
 from typing import Optional, Dict, List
 
-def transactions_to_dataframe(db: Session, start_date: Optional[date] = None,
-                              end_date: Optional[date] = None) -> pd.DataFrame:
+def transactions_to_dataframe(db: Session, start_date: Optional[date] = None, end_date: Optional[date] = None) -> pd.DataFrame:
     query = db.query(Transaction)
     if start_date:
         query = query.filter(Transaction.date >= start_date)
@@ -17,7 +16,6 @@ def transactions_to_dataframe(db: Session, start_date: Optional[date] = None,
         'date': t.date,
         'amount': t.amount,
         'category': t.category_rel.name,
-        'description': t.description,
         'type': t.transaction_type.value
     } for t in transactions]
     if not data:
@@ -43,8 +41,7 @@ def get_top_spending_categories(db: Session, limit: int = 5) -> List[Dict]:
     if df.empty:
         return []
     df_expenses = df[df['type'] == 'expense']
-    top_categories = df_expenses.groupby('category')['amount'].sum()\
-                                 .sort_values(ascending=False).head(limit).reset_index()
+    top_categories = df_expenses.groupby('category')['amount'].sum().sort_values(ascending=False).head(limit).reset_index()
     return top_categories.to_dict('records')
 
 def get_spending_patterns(db: Session) -> Dict:
